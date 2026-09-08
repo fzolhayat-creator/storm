@@ -1,14 +1,15 @@
 import backoff
-import dspy
 import functools
 import logging
 import os
 import random
 import requests
 import threading
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, Any, List, Dict
+import dspy
 import ujson
 from pathlib import Path
+import json
 
 
 from dsp import ERRORS, backoff_hdlr, giveup_hdlr
@@ -92,10 +93,21 @@ class LM:
         response = completion(
             ujson.dumps(dict(model=self.model, messages=messages, **kwargs))
         )
-        outputs = [
-            c.message.content if hasattr(c, "message") else c["text"]
-            for c in response["choices"]
-        ]
+        choices = (response or {}).get("choices") or []
+
+        if not response:
+            raise ValueError("LM returned empty response from LiteLLM")
+
+        choices = response.get("choices") or []
+
+        outputs = []
+        for c in choices:
+            if isinstance(c, dict):
+                msg = c.get("message", {})
+                if isinstance(msg, dict):
+                    outputs.append(msg.get("content", ""))
+                else:
+                    outputs.append(c.get("text", ""))
 
         # Logging, with removed api key & where `cost` is None on cache hit.
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith("api_")}
@@ -247,12 +259,23 @@ class LitellmModel(LM):
         response = completion(
             ujson.dumps(dict(model=self.model, messages=messages, **kwargs))
         )
-        response_dict = response.json()
-        self.log_usage(response_dict)
-        outputs = [
-            c.message.content if hasattr(c, "message") else c["text"]
-            for c in response["choices"]
-        ]
+
+        if not isinstance(response, dict) or not response:
+            raise ValueError("LM returned empty or invalid response from LiteLLM")
+
+        choices = response.get("choices") or []
+
+        outputs = []
+        for c in choices:
+            if not isinstance(c, dict):
+                continue
+
+            msg = c.get("message")
+
+            if isinstance(msg, dict) and msg.get("content") is not None:
+                outputs.append(msg.get("content"))
+            elif isinstance(c.get("text"), str):
+                outputs.append(c.get("text"))
 
         # Logging, with removed api key & where `cost` is None on cache hit.
         kwargs = {k: v for k, v in kwargs.items() if not k.startswith("api_")}
@@ -267,48 +290,132 @@ class LitellmModel(LM):
 
         return outputs
 
-
 # ========================================================================
 # The following language model classes were deprecated after v1.1.0.
 # They remain in this file for backward compatibility but will no longer be maintained.
 
-
 class OpenAIModel(dspy.OpenAI):
-    """A wrapper class for dspy.OpenAI."""
+    """
+    OpenAI-compatible backend for LM Studio.
+
+    This bypasses DSPy's internal OpenAI client and talks directly to
+    LM Studio's /v1/chat/completions endpoint while preserving the
+    interface expected by STORM.
+    """
+
+    DEBUG = True
 
     def __init__(
         self,
         model: str = "gpt-4o-mini",
         api_key: Optional[str] = None,
-        model_type: Literal["chat", "text"] = None,
+        api_base: str = "http://localhost:1234/v1",
+        model_type: Literal["chat", "text"] = "chat",
         **kwargs,
     ):
-        super().__init__(model=model, api_key=api_key, model_type=model_type, **kwargs)
-        self._token_usage_lock = threading.Lock()
+        super().__init__(
+            model=model,
+            api_key=api_key,
+            model_type=model_type,
+            **kwargs,
+        )
+
+        self.model = model
+        self.api_key = api_key or "lm-studio"
+        self.api_base = api_base.rstrip("/")
+
         self.prompt_tokens = 0
         self.completion_tokens = 0
+        self._token_usage_lock = threading.Lock()
 
     def log_usage(self, response):
-        """Log the total tokens from the OpenAI API response."""
-        usage_data = response.get("usage")
-        if usage_data:
-            with self._token_usage_lock:
-                self.prompt_tokens += usage_data.get("prompt_tokens", 0)
-                self.completion_tokens += usage_data.get("completion_tokens", 0)
+        usage = response.get("usage", {})
+
+        with self._token_usage_lock:
+            self.prompt_tokens += usage.get("prompt_tokens", 0)
+            self.completion_tokens += usage.get("completion_tokens", 0)
 
     def get_usage_and_reset(self):
-        """Get the total tokens used and reset the token usage."""
         usage = {
-            self.kwargs.get("model")
-            or self.kwargs.get("engine"): {
+            self.model: {
                 "prompt_tokens": self.prompt_tokens,
                 "completion_tokens": self.completion_tokens,
             }
         }
+
         self.prompt_tokens = 0
         self.completion_tokens = 0
 
         return usage
+
+    def request(self, prompt: str, **kwargs):
+        url = f"{self.api_base}/chat/completions"
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+        }
+
+        for key in (
+            "temperature",
+            "top_p",
+            "max_tokens",
+            "stop",
+            "presence_penalty",
+            "frequency_penalty",
+            "seed",
+            "n",
+        ):
+            if key in kwargs:
+                payload[key] = kwargs[key]
+
+        if self.DEBUG:
+            print("\n========== REQUEST ==========")
+            print(url)
+            print(payload)
+            print("=============================\n")
+
+        response = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=600,
+        )
+
+        try:
+            response.raise_for_status()
+        except Exception:
+            print("=" * 80)
+            print("LM Studio HTTP ERROR")
+            print("Status:", response.status_code)
+
+            try:
+                print(response.json())
+            except Exception:
+                print(response.text)
+
+            print("=" * 80)
+            raise
+
+        data = response.json()
+
+        if self.DEBUG:
+            print("\n========== RESPONSE ==========")
+            print(json.dumps(data, indent=2))
+            print("==============================\n")
+
+        if "error" in data:
+            raise RuntimeError(data["error"])
+
+        return data
 
     def __call__(
         self,
@@ -316,52 +423,50 @@ class OpenAIModel(dspy.OpenAI):
         only_completed: bool = True,
         return_sorted: bool = False,
         **kwargs,
-    ) -> list[dict[str, Any]]:
-        """Copied from dspy/dsp/modules/gpt3.py with the addition of tracking token usage."""
+    ):
 
-        assert only_completed, "for now"
-        assert return_sorted is False, "for now"
-
-        # if kwargs.get("n", 1) > 1:
-        #     if self.model_type == "chat":
-        #         kwargs = {**kwargs}
-        #     else:
-        #         kwargs = {**kwargs, "logprobs": 5}
+        assert only_completed
+        assert not return_sorted
 
         response = self.request(prompt, **kwargs)
 
-        # Log the token usage from the OpenAI API response.
         self.log_usage(response)
 
-        choices = response["choices"]
+        choices = response.get("choices", [])
 
-        completed_choices = [c for c in choices if c["finish_reason"] != "length"]
+        print("\nFinish reasons:")
+        for i, choice in enumerate(choices):
+            print(f"Choice {i}: {choice.get('finish_reason')}")
 
-        if only_completed and len(completed_choices):
-            choices = completed_choices
+        print("\nUsage:")
+        print(response.get("usage"))
 
-        completions = [self._get_choice_text(c) for c in choices]
-        if return_sorted and kwargs.get("n", 1) > 1:
-            scored_completions = []
+        if not choices:
+            raise RuntimeError(
+                "LM Studio returned no completion choices."
+            )
 
-            for c in choices:
-                tokens, logprobs = (
-                    c["logprobs"]["tokens"],
-                    c["logprobs"]["token_logprobs"],
-                )
+        outputs = []
 
-                if "<|endoftext|>" in tokens:
-                    index = tokens.index("<|endoftext|>") + 1
-                    tokens, logprobs = tokens[:index], logprobs[:index]
+        for choice in choices:
 
-                avglog = sum(logprobs) / len(logprobs)
-                scored_completions.append((avglog, self._get_choice_text(c)))
+            if (
+                only_completed
+                and choice.get("finish_reason") == "length"
+            ):
+                continue
 
-            scored_completions = sorted(scored_completions, reverse=True)
-            completions = [c for _, c in scored_completions]
+            message = choice.get("message", {})
+            outputs.append(message.get("content", ""))
 
-        return completions
+        if not outputs:
+            raise RuntimeError(
+                "LM Studio returned only incomplete generations."
+            )
 
+        return outputs
+
+# ========================================================================
 
 class DeepSeekModel(dspy.OpenAI):
     """A wrapper class for DeepSeek API, compatible with dspy.OpenAI."""
@@ -373,8 +478,20 @@ class DeepSeekModel(dspy.OpenAI):
         api_base: str = "https://api.deepseek.com",
         **kwargs,
     ):
-        super().__init__(model=model, api_key=api_key, api_base=api_base, **kwargs)
-        self._token_usage_lock = threading.Lock()
+        super().__init__(
+            model=model,
+            api_key=api_key,
+            api_base=api_base,
+            model_type=model_type,
+            **kwargs,
+        )
+
+        # Explicitly store values because dspy.OpenAI doesn't
+        self.model = model
+        self.api_key = api_key
+        self.api_base = api_base.rstrip("/")
+        self.model_type = model_type
+        self._lock = threading.Lock()
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.model = model
@@ -427,36 +544,82 @@ class DeepSeekModel(dspy.OpenAI):
             f"{self.api_base}/v1/chat/completions", headers=headers, json=data
         )
         response.raise_for_status()
+
+        try:
+            response.raise_for_status()
+        except Exception:
+            print("=" * 80)
+            print("LM Studio HTTP ERROR")
+            print("Status:", response.status_code)
+
+            try:
+                print(response.json())
+            except Exception:
+                print(response.text)
+
+            print("=" * 80)
+            raise
+
         return response.json()
 
-    def __call__(
-        self,
-        prompt: str,
-        only_completed: bool = True,
-        return_sorted: bool = False,
-        **kwargs,
-    ) -> list[dict[str, Any]]:
-        """Call the DeepSeek API to generate completions."""
-        assert only_completed, "for now"
-        assert return_sorted is False, "for now"
+        def __call__(
+            self,
+            prompt: str,
+            only_completed: bool = True,
+            return_sorted: bool = False,
+            **kwargs,
+        ) -> list[str]:
+            """Direct LM Studio implementation using the official OpenAI client."""
 
-        response = self._create_completion(prompt, **kwargs)
+            assert only_completed, "for now"
+            assert return_sorted is False, "for now"
 
-        # Log the token usage from the DeepSeek API response.
-        self.log_usage(response)
+            client = OpenAI(
+                api_key=self.kwargs.get("api_key", "lm-studio"),
+                base_url=self.kwargs.get("api_base", "http://localhost:1234/v1"),
+            )
 
-        choices = response["choices"]
-        completions = [choice["message"]["content"] for choice in choices]
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=kwargs.get(
+                    "temperature",
+                    self.kwargs.get("temperature", 0.7),
+                ),
+                top_p=kwargs.get(
+                    "top_p",
+                    self.kwargs.get("top_p", 1.0),
+                ),
+                max_tokens=kwargs.get(
+                    "max_tokens",
+                    self.kwargs.get("max_tokens", 1024),
+                ),
+            )
 
-        history = {
-            "prompt": prompt,
-            "response": response,
-            "kwargs": kwargs,
-        }
-        self.history.append(history)
+            response = response.model_dump()
 
-        return completions
+            self.log_usage(response)
 
+            choices = response.get("choices", [])
+
+            if not choices:
+                raise ValueError("LM Studio returned no choices.")
+
+            completed_choices = [
+                c for c in choices
+                if c.get("finish_reason") != "length"
+            ]
+
+            if completed_choices:
+                choices = completed_choices
+
+            completions = []
+
+            for c in choices:
+                message = c.get("message", {})
+                completions.append(message.get("content", ""))
+
+            return completions
 
 class AzureOpenAIModel(dspy.LM):
     """A wrapper class of Azure OpenAI endpoint.
@@ -674,7 +837,21 @@ class GroqModel(dspy.OpenAI):
         response = requests.post(
             f"{self.api_base}/chat/completions", headers=headers, json=data
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except Exception:
+            print("=" * 80)
+            print("LM Studio HTTP ERROR")
+            print("Status:", response.status_code)
+
+            try:
+                print(response.json())
+            except Exception:
+                print(response.text)
+
+            print("=" * 80)
+            raise
+
         return response.json()
 
     def __call__(
@@ -831,6 +1008,20 @@ class ClaudeModel(dspy.dsp.modules.lm.LM):
         n = kwargs.pop("n", 1)
         completions = []
         for _ in range(n):
+
+            print("=" * 80)
+            print("kwargs:")
+            print(kwargs)
+
+            print("\nPrompt length:", len(prompt))
+            print("\nPrompt preview:")
+            print(prompt[:2000])
+            print("=" * 80)
+
+            response = self.request(prompt, **kwargs)
+
+            print(json.dumps(response.json(), indent=2))
+
             response = self.request(prompt, **kwargs)
             self.log_usage(response)
             # This is the original behavior in dspy/dsp/modules/anthropic.py.

@@ -24,4 +24,7 @@ secrets.toml
 *.log
 */assertion.log
 *results/
-.venv/
+
+# Local development artifacts
+*.bak
+logfile_*.txt

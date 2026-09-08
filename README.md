@@ -1,3 +1,190 @@
+## Custom Fork
+
+This repository is a customized fork of
+[Stanford OVAL STORM](https://github.com/stanford-oval/storm).
+
+The upstream STORM project provides an LLM-powered knowledge-curation
+pipeline. This fork adds a local, configurable execution architecture
+for running STORM with LM Studio and task-specific local language models.
+
+### Customization Highlights
+
+- OpenAI-compatible LM Studio integration for local inference
+- Task-specific model assignment across STORM pipeline stages
+- Centralized YAML configuration for models and generation behavior
+- Dedicated persona-generation model configuration
+- Retrieval and HTTP robustness improvements
+- Execution, token-usage, and diagnostic logging
+- Local multi-model execution using:
+  - Ornith-1.0-9B for research-oriented stages
+  - Gemma-4-E4B for writing-oriented stages
+
+### Custom Pipeline
+
+```text
+                              ┌─────────────┐
+                              │  LM Studio  │
+                              └──────┬──────┘
+                                     │
+                     ┌───────────────▼───────────────┐
+                     │     OpenAI-Compatible API     │
+                     └───────────────┬───────────────┘
+                                     │
+                              localhost:1234/v1
+                                     │
+                 ┌───────────────────┴───────────────────┐
+                 │                                       │
+        ┌────────▼────────┐                    ┌─────────▼─────────┐
+        │ Research        │                    │ Writing           │
+        │ Pipeline        │                    │ Pipeline          │
+        └────────┬────────┘                    └─────────▲─────────┘
+                 │                                       │       │
+           ornith-1.0-9b                                 │  gemma-4-e4b
+                 │                                       │       │
+              Persona                                    │       │
+                 │                                       │       │
+             Questions                                   │       │
+                 │                                       │       │
+           Conversations                                 │       │
+                 │                                       │       │
+        DuckDuckGo Retrieval                             │       │
+                 │                                       │       │
+          Knowledge Table ───────────────────────────────┘       │
+                                                                 │
+                                                              Outline
+                                                                 │
+                                                              Article
+                                                                 │
+                                                              Polish
+                                                                 │
+                                              ┌──────────────────▼────────────┐
+                                              │ Final Wikipedia-style Article │
+                                              └───────────────────────────────┘
+```
+
+### Local Runtime
+
+The customized runner uses LM Studio's OpenAI-compatible API:
+
+`http://localhost:1234/v1`
+
+### Engineering Evolution
+
+The customization evolved incrementally from understanding the upstream
+STORM architecture to building and validating a locally executed,
+multi-model pipeline:
+
+```text
+Stanford OVAL STORM
+      │
+      ▼
+Understand architecture
+      │
+      ▼
+Local LM Studio integration
+      │
+      ▼
+Task-specific model orchestration
+      │
+      ▼
+Centralized configuration
+      │
+      ▼
+Retrieval / HTTP robustness
+      │
+      ▼
+Execution & observability
+      │
+      ▼
+End-to-end validation
+```
+
+The resulting system separates research-oriented and writing-oriented
+workloads so that different local models can be assigned according to
+the characteristics of each stage.
+
+### Motivation
+
+This fork was created to explore how STORM's knowledge-curation workflow
+can be adapted for locally hosted, task-specific language models while
+retaining STORM's modular research, retrieval, and writing pipeline.
+
+The primary goals were:
+
+- Run STORM locally through LM Studio using an OpenAI-compatible API.
+- Assign different local models to different stages of the pipeline
+  according to their strengths.
+- Centralize model and generation configuration in YAML files.
+- Introduce a dedicated configuration path for persona generation.
+- Improve retrieval and HTTP robustness for local experimentation.
+- Make execution behavior easier to inspect through diagnostic logging.
+
+This is an independent engineering exploration built on top of the
+Stanford OVAL STORM codebase.
+
+### Design Decisions
+
+#### Why separate research and writing models?
+
+The STORM pipeline performs materially different tasks during research
+and writing. This fork therefore allows independent model assignment so
+that local models can be selected according to the characteristics of
+each workload.
+
+#### Why LM Studio?
+
+LM Studio provides an OpenAI-compatible local inference endpoint,
+allowing the STORM pipeline to be exercised using locally hosted
+language models rather than depending on a remote proprietary LLM API.
+
+#### Why centralized configuration?
+
+Model assignments and generation parameters change frequently during
+experimentation. YAML configuration keeps these decisions separate from
+the pipeline implementation and makes experiments easier to reproduce
+and modify.
+
+#### Why dedicated persona-generation configuration?
+
+Persona generation is a distinct stage of the STORM workflow. Keeping
+its model configuration separate allows the behavior of that stage to
+be tuned independently from the research and writing workloads.
+
+### End-to-End Validation
+
+The customized pipeline has been validated end-to-end using local
+LM Studio inference and web retrieval.
+
+A complete run successfully progressed through:
+
+```text
+Research
+      │
+      ▼
+Knowledge Curation
+      │
+      ▼
+Outline Generation
+      │
+      ▼
+Article Generation
+      │
+      ▼
+Article Polishing
+```
+
+This specific validated configuration used:
+
+- `ornith-1.0-9b` for research-oriented stages
+- `google/gemma-4-e4b` for writing-oriented stages
+- DuckDuckGo for web retrieval
+- LM Studio's OpenAI-compatible API at `http://localhost:1234/v1`
+
+Execution logs record retrieval activity, model responses, token usage,
+phase runtimes, and pipeline completion status.
+
+---
+
 <p align="center">
   <img src="assets/logo.svg" style="width: 25%; height: auto;">
 </p>
@@ -34,8 +221,6 @@ STORM is a LLM system that writes Wikipedia-like articles from scratch based on 
 While the system cannot produce publication-ready articles that often require a significant number of edits, experienced Wikipedia editors have found it helpful in their pre-writing stage.
 
 **More than 70,000 people have tried our [live research preview](https://storm.genie.stanford.edu/). Try it out to see how STORM can help your knowledge exploration journey and please provide feedback to help us improve the system 🙏!**
-
-
 
 ## How STORM & Co-STORM works
 
@@ -87,7 +272,6 @@ You could also install the source code which allows you to modify the behavior o
    conda activate storm
    pip install -r requirements.txt
    ```
-   
 
 ## API
 
@@ -215,8 +399,6 @@ article = costorm_runner.generate_report()
 print(article)
 ```
 
-
-
 ## Quick Start with Example Scripts
 
 We provide scripts in our [examples folder](examples) as a quick start to run STORM and Co-STORM with different configurations.
@@ -268,7 +450,6 @@ python examples/costorm_examples/run_costorm_gpt.py \
     --output-dir $OUTPUT_DIR \
     --retriever bing
 ```
-
 
 ## Customization of the Pipeline
 

@@ -1,0 +1,76 @@
+# ============================================================
+# STORM Custom Branch v1.0
+# Model Runtime Configuration
+#
+# Controls LLM provider settings.
+#
+# Used by:
+#   - run_storm_wiki_lmstudio.py
+#   - knowledge_storm/lm.py
+#
+# ============================================================
+
+provider: lmstudio
+
+# ------------------------------------------------------------
+# LM Studio OpenAI-Compatible Server
+# ------------------------------------------------------------
+
+lmstudio:
+
+  api_key: lm-studio
+
+  api_base: "http://localhost:1234/v1"
+
+  timeout: 600
+
+# ------------------------------------------------------------
+# Model Assignment
+# ------------------------------------------------------------
+
+models:
+
+  # --------------------------------------------------
+  # Research model
+  #
+  # Used for:
+  # - persona generation
+  # - question asking
+  # - conversation simulation
+  # - retrieval reasoning
+  #
+  # Should be fast and factual.
+  # --------------------------------------------------
+
+  research_model:
+
+    name: ornith-1.0-9b
+
+    api_base: http://localhost:1234/v1
+
+  # --------------------------------------------------
+  # Writing model
+  #
+  # Used for:
+  # - outline generation
+  # - article generation
+  # - polishing
+  #
+  # Should have stronger reasoning.
+  # --------------------------------------------------
+
+  writing_model:
+
+    name: google/gemma-4-e4b
+
+    api_base: http://localhost:1234/v1
+
+# ------------------------------------------------------------
+# API Compatibility
+# ------------------------------------------------------------
+
+openai_compatible:
+
+  enabled: true
+
+  endpoint: "/chat/completions"

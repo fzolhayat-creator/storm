@@ -28,12 +28,17 @@ class STORMWikiLMConfigs(LMConfigs):
 
     def __init__(self):
         self.conv_simulator_lm = (
-            None  # LLM used in conversation simulator except for question asking.
+            None
         )
-        self.question_asker_lm = None  # LLM used in question asking.
-        self.outline_gen_lm = None  # LLM used in outline generation.
-        self.article_gen_lm = None  # LLM used in article generation.
-        self.article_polish_lm = None  # LLM used in article polishing.
+        self.question_asker_lm = None
+
+        # LLM used for persona generation.
+        # Dedicated configuration added in STORM Custom Branch v1.0.
+        self.persona_generator_lm = None
+
+        self.outline_gen_lm = None
+        self.article_gen_lm = None
+        self.article_polish_lm = None
 
     def init_openai_model(
         self,
@@ -114,6 +119,11 @@ class STORMWikiLMConfigs(LMConfigs):
     def set_question_asker_lm(self, model: Union[dspy.dsp.LM, dspy.dsp.HFModel]):
         self.question_asker_lm = model
 
+    def set_persona_generator_lm(
+        self,
+        model: Union[dspy.dsp.LM, dspy.dsp.HFModel]):
+        self.persona_generator_lm = model
+
     def set_outline_gen_lm(self, model: Union[dspy.dsp.LM, dspy.dsp.HFModel]):
         self.outline_gen_lm = model
 
@@ -180,7 +190,7 @@ class STORMWikiRunner(Engine):
 
         self.retriever = Retriever(rm=rm, max_thread=self.args.max_thread_num)
         storm_persona_generator = StormPersonaGenerator(
-            self.lm_configs.question_asker_lm
+            self.lm_configs.persona_generator_lm
         )
         self.storm_knowledge_curation_module = StormKnowledgeCurationModule(
             retriever=self.retriever,

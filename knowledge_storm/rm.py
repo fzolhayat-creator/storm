@@ -747,7 +747,7 @@ class DuckDuckGoSearchRM(dspy.Retrieve):
         """
         super().__init__(k=k)
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
         except ImportError as err:
             raise ImportError(
                 "Duckduckgo requires `pip install duckduckgo_search`."
@@ -763,7 +763,7 @@ class DuckDuckGoSearchRM(dspy.Retrieve):
         #   https://duckduckgo.com/duckduckgo-help-pages/settings/params/
 
         # Sets the backend to be api
-        self.duck_duck_go_backend = "api"
+        self.duck_duck_go_backend = "auto"
 
         # Only gets safe search results
         self.duck_duck_go_safe_search = safe_search
@@ -778,7 +778,7 @@ class DuckDuckGoSearchRM(dspy.Retrieve):
             self.is_valid_source = lambda x: True
 
         # Import the duckduckgo search library found here: https://github.com/deedy5/duckduckgo_search
-        self.ddgs = DDGS()
+        self.ddgs = DDGS(timeout=10)
 
     def get_usage_and_reset(self):
         usage = self.usage
@@ -794,10 +794,21 @@ class DuckDuckGoSearchRM(dspy.Retrieve):
         giveup=giveup_hdlr,
     )
     def request(self, query: str):
-        results = self.ddgs.text(
-            query, max_results=self.k, backend=self.duck_duck_go_backend
-        )
-        return results
+        try:
+            results = self.ddgs.text(
+                query,
+                max_results=self.k,
+                backend=self.duck_duck_go_backend,
+            )
+            return results
+
+        except Exception as e:
+            print("=" * 80)
+            print("DuckDuckGo search failed")
+            print("Query:", query)
+            print("Error:", repr(e))
+            print("=" * 80)
+            return []
 
     def forward(
         self, query_or_queries: Union[str, List[str]], exclude_urls: List[str] = []
@@ -849,7 +860,7 @@ class DuckDuckGoSearchRM(dspy.Retrieve):
                     else:
                         print(f"invalid source {url} or url in exclude_urls")
                 except Exception as e:
-                    print(f"Error occurs when processing {result=}: {e}\n")
+                    print(f"Error occurs when processing search result: {d}: {e}\n")
                     print(f"Error occurs when searching query {query}: {e}")
 
         return collected_results

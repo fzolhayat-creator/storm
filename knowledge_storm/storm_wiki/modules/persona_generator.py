@@ -10,11 +10,27 @@ from bs4 import BeautifulSoup
 def get_wiki_page_title_and_toc(url):
     """Get the main title and table of contents from an url of a Wikipedia page."""
 
-    response = requests.get(url)
+    response = requests.get(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=10,
+    )
+
+    response.raise_for_status()
+
     soup = BeautifulSoup(response.content, "html.parser")
 
-    # Get the main title from the first h1 tag
-    main_title = soup.find("h1").text.replace("[edit]", "").strip().replace("\xa0", " ")
+    h1 = soup.find("h1")
+
+    if h1 is None:
+        raise ValueError(f"No h1 found in Wikipedia page: {url}")
+
+    h1 = soup.find("h1")
+
+    if h1:
+        main_title = h1.text.replace("[edit]", "").strip().replace("\xa0", " ")
+    else:
+        main_title = url.split("/")[-1].replace("_", " ")
 
     toc = ""
     levels = []
@@ -28,10 +44,18 @@ def get_wiki_page_title_and_toc(url):
 
     # Start processing from h2 to exclude the main title from TOC
     for header in soup.find_all(["h2", "h3", "h4", "h5", "h6"]):
-        level = int(
-            header.name[1]
-        )  # Extract the numeric part of the header tag (e.g., '2' from 'h2')
-        section_title = header.text.replace("[edit]", "").strip().replace("\xa0", " ")
+
+        if header is None:
+            continue
+
+        level = int(header.name[1])
+
+        section_title = (
+            header.text
+            .replace("[edit]", "")
+            .strip()
+            .replace("\xa0", " ")
+        )
         if section_title in excluded_sections:
             continue
 
@@ -71,17 +95,35 @@ class CreateWriterWithPersona(dspy.Module):
     def __init__(self, engine: Union[dspy.dsp.LM, dspy.dsp.HFModel]):
         super().__init__()
         self.find_related_topic = dspy.ChainOfThought(FindRelatedTopic)
-        self.gen_persona = dspy.ChainOfThought(GenPersona)
+        self.gen_persona = dspy.Predict(GenPersona)
         self.engine = engine
 
     def forward(self, topic: str, draft=None):
         with dspy.settings.context(lm=self.engine):
             # Get section names from wiki pages of relevant topics for inspiration.
-            related_topics = self.find_related_topic(topic=topic).related_topics
+            prediction = self.find_related_topic(topic=topic)
+
+            print("=" * 80)
+            print("Prediction object:")
+            print(prediction)
+            print("Type:", type(prediction))
+
+            try:
+                print("Fields:", prediction.__dict__)
+            except Exception as e:
+                print("Couldn't inspect prediction:", e)
+
+            related_topics = prediction.related_topics
             urls = []
             for s in related_topics.split("\n"):
                 if "http" in s:
-                    urls.append(s[s.find("http") :])
+                    url = s[s.find("http") :].strip()
+
+                    # remove trailing explanation text
+                    url = url.split()[0]
+
+                    if "wikipedia.org/wiki/" in url:
+                        urls.append(url)
             examples = []
             for url in urls:
                 try:
@@ -131,7 +173,7 @@ class StormPersonaGenerator:
     def __init__(self, engine: Union[dspy.dsp.LM, dspy.dsp.HFModel]):
         self.create_writer_with_persona = CreateWriterWithPersona(engine=engine)
 
-    def generate_persona(self, topic: str, max_num_persona: int = 3) -> List[str]:
+    def generate_persona(self, topic: str, max_num_persona: int = 1) -> List[str]:
         """
         Generates a list of personas based on the provided topic, up to a maximum number specified.
 

@@ -1,0 +1,83 @@
+# ============================================================
+# STORM Custom Branch v1.0
+# Generation Configuration
+#
+# Controls LLM generation behavior for each STORM phase.
+#
+# These values will eventually be injected into:
+#   - persona_generator.py
+#   - run_storm_wiki_lmstudio.py
+#   - lm.py
+#
+# ============================================================
+
+global:
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 4096
+
+# ------------------------------------------------------------
+# Persona Generation
+#
+# Purpose:
+#   Generate diverse expert personas.
+#
+# Higher creativity is preferred.
+# ------------------------------------------------------------
+
+persona_generation:
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 1500
+
+# ------------------------------------------------------------
+# Conversation Simulation
+#
+# Purpose:
+#   Extract reliable information from retrieved sources.
+#
+# Lower randomness improves factual consistency.
+# ------------------------------------------------------------
+
+conversation_simulation:
+  temperature: 0.3
+  top_p: 0.8
+  max_tokens: 3000
+
+# ------------------------------------------------------------
+# Outline Generation
+#
+# Purpose:
+#   Construct article structure and sections.
+# ------------------------------------------------------------
+
+outline_generation:
+  temperature: 0.5
+  top_p: 0.85
+  max_tokens: 3000
+
+# ------------------------------------------------------------
+# Article Generation
+#
+# Purpose:
+#   Produce the main Wikipedia-style article.
+# ------------------------------------------------------------
+
+article_generation:
+  temperature: 0.45
+  top_p: 0.9
+  max_tokens: 8000
+
+# ------------------------------------------------------------
+# Article Polishing
+#
+# Purpose:
+#   Improve readability while preserving facts.
+#
+# Very conservative generation.
+# ------------------------------------------------------------
+
+article_polishing:
+  temperature: 0.3
+  top_p: 0.75
+  max_tokens: 8000
