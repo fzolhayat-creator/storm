@@ -173,7 +173,7 @@ Article Generation
 Article Polishing
 ```
 
-This specific validated configuration used:
+This specific validated configuration utilized (though any local LLM of your preference can be easily specified):
 
 - `ornith-1.0-9b` for research-oriented stages
 - `google/gemma-4-e4b` for writing-oriented stages
