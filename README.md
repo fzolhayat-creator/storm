@@ -1,4 +1,4 @@
-# STORM — Local Multi-Model Research and Writing
+# STORM — Custom Local Multi-Model Research and Writing
 
 An independent custom fork of Stanford OVAL’s STORM with locally hosted inference, YAML-based model assignment, dedicated persona-model configuration, retrieval improvements, and execution diagnostics.
 
