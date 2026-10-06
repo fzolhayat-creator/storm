@@ -161,7 +161,48 @@ The local client prints requests and responses, finish reasons, and token usage 
 - **Retrieval controls:** `retrieval_config.yaml` does not select or configure the active retriever. The DuckDuckGo adapter uses `ddgs` with `backend="auto"` and returns an empty result list after a caught search error. Safe-search and region values accepted by the adapter are not passed into its `ddgs.text()` call.
 - **Unused CLI options:** `--retrieve-top-k` and `--remove-duplicate` are parsed by the local runner but are not forwarded to the engine.
 - **Inherited entry points:** the Streamlit demo and other STORM examples do not set the fork's new persona-model slot. When adapting them, explicitly call `lm_configs.set_persona_generator_lm(...)` before constructing `STORMWikiRunner`, and review their provider setup. The Co-STORM example has its own model and encoder configuration.
-- **Validation scope:** a successful local end-to-end run with Ornith, Gemma, and DuckDuckGo is conducted many times. No reproducible run log accompanies that claim in this repository. Treat it as a historical maintainer report, not evidence that every model, provider, or current environment has been tested.
+- **Validation scope:** a successful local end-to-end run with Ornith, Gemma, and DuckDuckGo is conducted many times.
+- ```text
+                              ┌─────────────┐
+                              │  LM Studio  │
+                              └──────┬──────┘
+                                     │
+                     ┌───────────────▼───────────────┐
+                     │     OpenAI-Compatible API     │
+                     └───────────────┬───────────────┘
+                                     │
+                              localhost:1234/v1
+                                     │
+                 ┌───────────────────┴───────────────────┐
+                 │                                       │
+        ┌────────▼────────┐                    ┌─────────▼─────────┐
+        │ Research        │                    │ Writing           │
+        │ Pipeline        │                    │ Pipeline          │
+        └────────┬────────┘                    └─────────▲─────────┘
+                 │                                       │       │
+           ornith-1.0-9b                                 │  gemma-4-e4b
+                 │                                       │       │
+              Persona                                    │       │
+                 │                                       │       │
+             Questions                                   │       │
+                 │                                       │       │
+           Conversations                                 │       │
+                 │                                       │       │
+        DuckDuckGo Retrieval                             │       │
+                 │                                       │       │
+          Knowledge Table ───────────────────────────────┘       │
+                                                                 │
+                                                              Outline
+                                                                 │
+                                                              Article
+                                                                 │
+                                                              Polish
+                                                                 │
+                                              ┌──────────────────▼────────────┐
+                                              │ Final Wikipedia-style Article │
+                                              └───────────────────────────────┘
+```
+- No reproducible run log accompanies that claim in this repository. Treat it as a historical maintainer report, not evidence that every model, provider, or current environment has been tested.
 
 ## Repository guide and inherited examples
 
