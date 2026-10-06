@@ -1,4 +1,8 @@
-# STORM — Custom Fork for LM Studio
+# STORM — Local Multi-Model Research and Writing
+
+An independent custom fork of Stanford OVAL’s STORM with locally hosted inference, YAML-based model assignment, dedicated persona-model configuration, retrieval improvements, and execution diagnostics.
+
+---
 
 Research a topic, organize evidence, and generate a Wikipedia-style article with citations using locally hosted language models.
 
@@ -26,7 +30,7 @@ Local inference still uses online retrieval. Wikipedia, web search, source downl
 
 ## Architecture and diagram comparison
 
-The following are the two supplied V3 [GitDiagram](https://gitdiagram.com/) exports, preserved without image changes. They are architecture snapshots of the upstream repository and this fork, rather than runtime traces or evidence of Stanford endorsement. Open either image at full size to read its labels.
+The following are the two supplied [GitDiagram](https://gitdiagram.com/) exports. They are architecture snapshots of the upstream repository and this fork. Open either image at full size to read its labels.
 
 ### Original upstream STORM
 
