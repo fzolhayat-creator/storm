@@ -204,7 +204,7 @@ The local client prints requests and responses, finish reasons, and token usage 
                                               │ Final Wikipedia-style Article │
                                               └───────────────────────────────┘
 ```
-- **Validation claims:** No reproducible run log accompanies that claim in this repository. Treat it as a historical maintainer report, not evidence that every model, provider, or current environment has been tested.
+- **Validation claims:** No reproducible run log accompanies the Validation Scope in this repository. Treat it as a historical maintainer report, not evidence that every model, provider, or current environment has been tested.
 
 ## Repository guide and inherited examples
 
