@@ -163,6 +163,8 @@ The local client prints requests and responses, finish reasons, and token usage 
 - **Inherited entry points:** the Streamlit demo and other STORM examples do not set the fork's new persona-model slot. When adapting them, explicitly call `lm_configs.set_persona_generator_lm(...)` before constructing `STORMWikiRunner`, and review their provider setup. The Co-STORM example has its own model and encoder configuration.
 - **Validation scope:** a successful local end-to-end run with Ornith, Gemma, and DuckDuckGo is conducted many times.
 ```text
+                    The Successful Local End-To-End Run
+                    ───────────────────────────────────
                               ┌─────────────┐
                               │  LM Studio  │
                               └──────┬──────┘
