@@ -1,513 +1,201 @@
-## Custom Fork
+# STORM — Custom Fork for LM Studio
 
-This repository is a customized fork of
-[Stanford OVAL STORM](https://github.com/stanford-oval/storm).
+Research a topic, organize evidence, and generate a Wikipedia-style article with citations using locally hosted language models.
 
-The upstream STORM project provides an LLM-powered knowledge-curation
-pipeline. This fork adds a local, configurable execution architecture
-for running STORM with LM Studio and task-specific local language models.
+This is [fzolhayat-creator/storm](https://github.com/fzolhayat-creator/storm), an independent customized fork of [Stanford OVAL's STORM](https://github.com/stanford-oval/storm). STORM stands for **Synthesis of Topic Outlines through Retrieval and Multi-perspective Question Asking**. The original research, STORM and Co-STORM algorithms, and foundational implementation belong to the upstream authors. This fork focuses on an LM Studio execution path for the STORM wiki pipeline.
 
-### Customization Highlights
+[Quick start](#quick-start) · [Architecture](#architecture-and-diagram-comparison) · [Configuration](#configuration) · [Limitations](#current-limitations) · [Citation](#citation) · [MIT license](LICENSE)
 
-- OpenAI-compatible LM Studio integration for local inference
-- Task-specific model assignment across STORM pipeline stages
-- Centralized YAML configuration for models and generation behavior
-- Dedicated persona-generation model configuration
-- Retrieval and HTTP robustness improvements
-- Execution, token-usage, and diagnostic logging
-- Local multi-model execution using:
-  - Ornith-1.0-9B for research-oriented stages
-  - Gemma-4-E4B for writing-oriented stages
+## Upstream foundation and fork scope
 
-### Custom Pipeline
+Upstream STORM combines perspective-guided question asking and simulated conversations to gather sources, construct an outline, write an article, and polish the result. Co-STORM adds collaborative discussions, human participation, and a shared knowledge base. Both implementations remain in this repository.
 
-```text
-                              ┌─────────────┐
-                              │  LM Studio  │
-                              └──────┬──────┘
-                                     │
-                     ┌───────────────▼───────────────┐
-                     │     OpenAI-Compatible API     │
-                     └───────────────┬───────────────┘
-                                     │
-                              localhost:1234/v1
-                                     │
-                 ┌───────────────────┴───────────────────┐
-                 │                                       │
-        ┌────────▼────────┐                    ┌─────────▼─────────┐
-        │ Research        │                    │ Writing           │
-        │ Pipeline        │                    │ Pipeline          │
-        └────────┬────────┘                    └─────────▲─────────┘
-                 │                                       │       │
-           ornith-1.0-9b                                 │  gemma-4-e4b
-                 │                                       │       │
-              Persona                                    │       │
-                 │                                       │       │
-             Questions                                   │       │
-                 │                                       │       │
-           Conversations                                 │       │
-                 │                                       │       │
-        DuckDuckGo Retrieval                             │       │
-                 │                                       │       │
-          Knowledge Table ───────────────────────────────┘       │
-                                                                 │
-                                                              Outline
-                                                                 │
-                                                              Article
-                                                                 │
-                                                              Polish
-                                                                 │
-                                              ┌──────────────────▼────────────┐
-                                              │ Final Wikipedia-style Article │
-                                              └───────────────────────────────┘
-```
+The fork builds on upstream's existing support for assigning different models to pipeline components. Its additions are a dedicated local runner, YAML-based model configuration, and a separate persona-generation model slot.
 
-### Local Runtime
+| Area | Upstream foundation | Custom fork implementation |
+| --- | --- | --- |
+| Research and writing | Modular knowledge curation, outline, article, and polishing stages | Retains those stages and assigns research and writing model groups in the LM Studio runner |
+| Language models | Provider wrappers and component-specific model configuration | Adapts `OpenAIModel` to call an OpenAI-compatible LM Studio chat endpoint directly |
+| Persona generation | Uses the question-asking model | Adds `set_persona_generator_lm()` and a dedicated generation-configuration section |
+| Configuration | Runner arguments and example-specific model setup | Adds `config_loader.py` and YAML files; the local runner reads model and generation settings |
+| Retrieval | Pluggable search engines and document retrieval | Updates the DuckDuckGo adapter to `ddgs`, automatic backend selection, a timeout, and search-error diagnostics |
+| HTTP and diagnostics | Existing pipeline summaries and output artifacts | Adds Wikipedia request checks and verbose local-model request, response, finish-reason, and usage output |
+| Co-STORM and demo | Collaborative engine and Streamlit article interface | Retained from upstream; the new YAML/LM Studio runner does not automatically configure these entry points |
 
-The customized runner uses LM Studio's OpenAI-compatible API:
+Local inference still uses online retrieval. Wikipedia, web search, source downloads, and an initial embedding-model download may require internet access. Generated articles need human review for factual accuracy, source quality, and citation support.
 
-`http://localhost:1234/v1`
+## Architecture and diagram comparison
 
-### Engineering Evolution
+The following are the two supplied V3 [GitDiagram](https://gitdiagram.com/) exports, preserved without image changes. They are architecture snapshots of the upstream repository and this fork, rather than runtime traces or evidence of Stanford endorsement. Open either image at full size to read its labels.
 
-The customization evolved incrementally from understanding the upstream
-STORM architecture to building and validating a locally executed,
-multi-model pipeline:
+### Original upstream STORM
+
+[![Original upstream STORM GitDiagram: STORM and Co-STORM orchestration, curation, shared knowledge, model and retrieval interfaces, and article artifacts](assets/architecture/upstream-storm-gitdiagram.png)](assets/architecture/upstream-storm-gitdiagram.png)
+
+The upstream diagram emphasizes orchestration and the Streamlit interface, the STORM curation stages, Co-STORM collaboration, shared knowledge, embeddings, retrieval, language-model providers, and article files.
+
+### Customized fork
+
+[![Custom STORM fork GitDiagram: retained wiki and collaborative pipelines with runtime configuration, local language-model clients, LM Studio, and web sources](assets/architecture/custom-storm-gitdiagram.png)](assets/architecture/custom-storm-gitdiagram.png)
+
+The custom diagram separates the wiki and collaborative pipelines and highlights the persona generator, runtime configuration, local LM clients, and LM Studio. The major change is the local execution and configuration path; the underlying research-to-article workflow is inherited.
+
+**How to read the differences:** the custom view regroups article data and knowledge-base state and omits the explicit embedding-encoder and article-file boxes visible upstream. Those visual omissions do not mean the implementations were removed. Similarly, connections drawn from the shared model layer to Co-STORM or the demo do not establish that those entry points consume the fork's YAML settings. The concrete local entry point is [`run_storm_wiki_lmstudio.py`](examples/storm_examples/run_storm_wiki_lmstudio.py).
 
 ```text
-Stanford OVAL STORM
-      │
-      ▼
-Understand architecture
-      │
-      ▼
-Local LM Studio integration
-      │
-      ▼
-Task-specific model orchestration
-      │
-      ▼
-Centralized configuration
-      │
-      ▼
-Retrieval / HTTP robustness
-      │
-      ▼
-Execution & observability
-      │
-      ▼
-End-to-end validation
+Topic
+  -> Research: personas, questions, source-grounded conversations
+  -> Collected evidence and references
+  -> Outline
+  -> Article with citations
+  -> Polished article
+
+Research models: persona generation, question asking, conversation simulation
+Writing models:  outline generation, article generation, article polishing
+Inference:       LM Studio at http://localhost:1234/v1
+Retrieval:       selected separately with --retriever
 ```
 
-The resulting system separates research-oriented and writing-oriented
-workloads so that different local models can be assigned according to
-the characteristics of each stage.
+## Quick start
 
-### Motivation
+### 1. Install this fork from source
 
-This fork was created to explore how STORM's knowledge-curation workflow
-can be adapted for locally hosted, task-specific language models while
-retaining STORM's modular research, retrieval, and writing pipeline.
+Use Python 3.11 for the documented setup (`setup.py` declares Python >=3.10).
 
-The primary goals were:
-
-- Run STORM locally through LM Studio using an OpenAI-compatible API.
-- Assign different local models to different stages of the pipeline
-  according to their strengths.
-- Centralize model and generation configuration in YAML files.
-- Introduce a dedicated configuration path for persona generation.
-- Improve retrieval and HTTP robustness for local experimentation.
-- Make execution behavior easier to inspect through diagnostic logging.
-
-This is an independent engineering exploration built on top of the
-Stanford OVAL STORM codebase.
-
-### Design Decisions
-
-#### Why separate research and writing models?
-
-The STORM pipeline performs materially different tasks during research
-and writing. This fork therefore allows independent model assignment so
-that local models can be selected according to the characteristics of
-each workload.
-
-#### Why LM Studio?
-
-LM Studio provides an OpenAI-compatible local inference endpoint,
-allowing the STORM pipeline to be exercised using locally hosted
-language models rather than depending on a remote proprietary LLM API.
-
-#### Why centralized configuration?
-
-Model assignments and generation parameters change frequently during
-experimentation. YAML configuration keeps these decisions separate from
-the pipeline implementation and makes experiments easier to reproduce
-and modify.
-
-#### Why dedicated persona-generation configuration?
-
-Persona generation is a distinct stage of the STORM workflow. Keeping
-its model configuration separate allows the behavior of that stage to
-be tuned independently from the research and writing workloads.
-
-### End-to-End Validation
-
-The customized pipeline has been validated end-to-end using local
-LM Studio inference and web retrieval.
-
-A complete run successfully progressed through:
-
-```text
-Research
-      │
-      ▼
-Knowledge Curation
-      │
-      ▼
-Outline Generation
-      │
-      ▼
-Article Generation
-      │
-      ▼
-Article Polishing
-```
-
-This specific validated configuration utilized (though any local LLM of your preference can be easily specified):
-
-- `ornith-1.0-9b` for research-oriented stages
-- `google/gemma-4-e4b` for writing-oriented stages
-- DuckDuckGo for web retrieval
-- LM Studio's OpenAI-compatible API at `http://localhost:1234/v1`
-
-Execution logs record retrieval activity, model responses, token usage,
-phase runtimes, and pipeline completion status.
-
----
-
-<p align="center">
-  <img src="assets/logo.svg" style="width: 25%; height: auto;">
-</p>
-
-# STORM: Synthesis of Topic Outlines through Retrieval and Multi-perspective Question Asking
-
-<p align="center">
-| <a href="http://storm.genie.stanford.edu"><b>Research preview</b></a> | <a href="https://arxiv.org/abs/2402.14207"><b>STORM Paper</b></a>| <a href="https://www.arxiv.org/abs/2408.15232"><b>Co-STORM Paper</b></a>  | <a href="https://storm-project.stanford.edu/"><b>Website</b></a> |
-</p>
-**Latest News** 🔥
-
-- [2025/01] We add [litellm](https://github.com/BerriAI/litellm) integration for language models and embedding models in `knowledge-storm` v1.1.0.
-
-- [2024/09] Co-STORM codebase is now released and integrated into `knowledge-storm` python package v1.0.0. Run `pip install knowledge-storm --upgrade` to check it out.
-
-- [2024/09] We introduce collaborative STORM (Co-STORM) to support human-AI collaborative knowledge curation! [Co-STORM Paper](https://www.arxiv.org/abs/2408.15232) has been accepted to EMNLP 2024 main conference.
-
-- [2024/07] You can now install our package with `pip install knowledge-storm`!
-- [2024/07] We add `VectorRM` to support grounding on user-provided documents, complementing existing support of search engines (`YouRM`, `BingSearch`). (check out [#58](https://github.com/stanford-oval/storm/pull/58))
-- [2024/07] We release demo light for developers a minimal user interface built with streamlit framework in Python, handy for local development and demo hosting (checkout [#54](https://github.com/stanford-oval/storm/pull/54))
-- [2024/06] We will present STORM at NAACL 2024! Find us at Poster Session 2 on June 17 or check our [presentation material](assets/storm_naacl2024_slides.pdf). 
-- [2024/05] We add Bing Search support in [rm.py](knowledge_storm/rm.py). Test STORM with `GPT-4o` - we now configure the article generation part in our demo using `GPT-4o` model.
-- [2024/04] We release refactored version of STORM codebase! We define [interface](knowledge_storm/interface.py) for STORM pipeline and reimplement STORM-wiki (check out [`src/storm_wiki`](knowledge_storm/storm_wiki)) to demonstrate how to instantiate the pipeline. We provide API to support customization of different language models and retrieval/search integration.
-
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
-## Overview [(Try STORM now!)](https://storm.genie.stanford.edu/)
-
-<p align="center">
-  <img src="assets/overview.svg" style="width: 90%; height: auto;">
-</p>
-STORM is a LLM system that writes Wikipedia-like articles from scratch based on Internet search. Co-STORM further enhanced its feature by enabling human to collaborative LLM system to support more aligned and preferred information seeking and knowledge curation.
-
-While the system cannot produce publication-ready articles that often require a significant number of edits, experienced Wikipedia editors have found it helpful in their pre-writing stage.
-
-**More than 70,000 people have tried our [live research preview](https://storm.genie.stanford.edu/). Try it out to see how STORM can help your knowledge exploration journey and please provide feedback to help us improve the system 🙏!**
-
-## How STORM & Co-STORM works
-
-### STORM
-
-STORM breaks down generating long articles with citations into two steps:
-
-1. **Pre-writing stage**: The system conducts Internet-based research to collect references and generates an outline.
-2. **Writing stage**: The system uses the outline and references to generate the full-length article with citations.
-<p align="center">
-  <img src="assets/two_stages.jpg" style="width: 60%; height: auto;">
-</p>
-
-STORM identifies the core of automating the research process as automatically coming up with good questions to ask. Directly prompting the language model to ask questions does not work well. To improve the depth and breadth of the questions, STORM adopts two strategies:
-1. **Perspective-Guided Question Asking**: Given the input topic, STORM discovers different perspectives by surveying existing articles from similar topics and uses them to control the question-asking process.
-2. **Simulated Conversation**: STORM simulates a conversation between a Wikipedia writer and a topic expert grounded in Internet sources to enable the language model to update its understanding of the topic and ask follow-up questions.
-
-### CO-STORM
-
-Co-STORM proposes **a collaborative discourse protocol** which implements a turn management policy to support smooth collaboration among 
-
-- **Co-STORM LLM experts**: This type of agent generates answers grounded on external knowledge sources and/or raises follow-up questions based on the discourse history.
-- **Moderator**: This agent generates thought-provoking questions inspired by information discovered by the retriever but not directly used in previous turns. Question generation can also be grounded!
-- **Human user**: The human user will take the initiative to either (1) observe the discourse to gain deeper understanding of the topic, or (2) actively engage in the conversation by injecting utterances to steer the discussion focus.
-
-<p align="center">
-  <img src="assets/co-storm-workflow.jpg" style="width: 60%; height: auto;">
-</p>
-
-Co-STORM also maintains a dynamic updated **mind map**, which organize collected information into a hierarchical concept structure, aiming to **build a shared conceptual space between the human user and the system**. The mind map has been proven to help reduce the mental load when the discourse goes long and in-depth. 
-
-Both STORM and Co-STORM are implemented in a highly modular way using [dspy](https://github.com/stanfordnlp/dspy).
-
-## Installation
-
-
-To install the knowledge storm library, use `pip install knowledge-storm`. 
-
-You could also install the source code which allows you to modify the behavior of STORM engine directly.
-1. Clone the git repository.
-    ```shell
-    git clone https://github.com/stanford-oval/storm.git
-    cd storm
-    ```
-   
-2. Install the required packages.
-   ```shell
-   conda create -n storm python=3.11
-   conda activate storm
-   pip install -r requirements.txt
-   ```
-
-## API
-
-Currently, our package support:
-
-- Language model components: All language models supported by litellm as listed [here](https://docs.litellm.ai/docs/providers)
-- Embedding model components: All embedding models supported by litellm as listed [here](https://docs.litellm.ai/docs/embedding/supported_embedding)
-- retrieval module components: `YouRM`, `BingSearch`, `VectorRM`, `SerperRM`, `BraveRM`, `SearXNG`, `DuckDuckGoSearchRM`, `TavilySearchRM`, `GoogleSearch`, and `AzureAISearch` as 
-
-:star2: **PRs for integrating more search engines/retrievers into [knowledge_storm/rm.py](knowledge_storm/rm.py) are highly appreciated!**
-
-Both STORM and Co-STORM are working in the information curation layer, you need to set up the information retrieval module and language model module to create their `Runner` classes respectively.
-
-### STORM
-
-The STORM knowledge curation engine is defined as a simple Python `STORMWikiRunner` class. Here is an example of using You.com search engine and OpenAI models.
-
-```python
-import os
-from knowledge_storm import STORMWikiRunnerArguments, STORMWikiRunner, STORMWikiLMConfigs
-from knowledge_storm.lm import LitellmModel
-from knowledge_storm.rm import YouRM
-
-lm_configs = STORMWikiLMConfigs()
-openai_kwargs = {
-    'api_key': os.getenv("OPENAI_API_KEY"),
-    'temperature': 1.0,
-    'top_p': 0.9,
-}
-# STORM is a LM system so different components can be powered by different models to reach a good balance between cost and quality.
-# For a good practice, choose a cheaper/faster model for `conv_simulator_lm` which is used to split queries, synthesize answers in the conversation.
-# Choose a more powerful model for `article_gen_lm` to generate verifiable text with citations.
-gpt_35 = LitellmModel(model='gpt-3.5-turbo', max_tokens=500, **openai_kwargs)
-gpt_4 = LitellmModel(model='gpt-4o', max_tokens=3000, **openai_kwargs)
-lm_configs.set_conv_simulator_lm(gpt_35)
-lm_configs.set_question_asker_lm(gpt_35)
-lm_configs.set_outline_gen_lm(gpt_4)
-lm_configs.set_article_gen_lm(gpt_4)
-lm_configs.set_article_polish_lm(gpt_4)
-# Check out the STORMWikiRunnerArguments class for more configurations.
-engine_args = STORMWikiRunnerArguments(...)
-rm = YouRM(ydc_api_key=os.getenv('YDC_API_KEY'), k=engine_args.search_top_k)
-runner = STORMWikiRunner(engine_args, lm_configs, rm)
-```
-
-The `STORMWikiRunner` instance can be evoked with the simple `run` method:
-```python
-topic = input('Topic: ')
-runner.run(
-    topic=topic,
-    do_research=True,
-    do_generate_outline=True,
-    do_generate_article=True,
-    do_polish_article=True,
-)
-runner.post_run()
-runner.summary()
-```
-- `do_research`: if True, simulate conversations with difference perspectives to collect information about the topic; otherwise, load the results.
-- `do_generate_outline`: if True, generate an outline for the topic; otherwise, load the results.
-- `do_generate_article`: if True, generate an article for the topic based on the outline and the collected information; otherwise, load the results.
-- `do_polish_article`: if True, polish the article by adding a summarization section and (optionally) removing duplicate content; otherwise, load the results.
-
-### Co-STORM
-
-The Co-STORM knowledge curation engine is defined as a simple Python `CoStormRunner` class. Here is an example of using Bing search engine and OpenAI models.
-
-```python
-from knowledge_storm.collaborative_storm.engine import CollaborativeStormLMConfigs, RunnerArgument, CoStormRunner
-from knowledge_storm.lm import LitellmModel
-from knowledge_storm.logging_wrapper import LoggingWrapper
-from knowledge_storm.rm import BingSearch
-
-# Co-STORM adopts the same multi LM system paradigm as STORM 
-lm_config: CollaborativeStormLMConfigs = CollaborativeStormLMConfigs()
-openai_kwargs = {
-    "api_key": os.getenv("OPENAI_API_KEY"),
-    "api_provider": "openai",
-    "temperature": 1.0,
-    "top_p": 0.9,
-    "api_base": None,
-} 
-question_answering_lm = LitellmModel(model=gpt_4o_model_name, max_tokens=1000, **openai_kwargs)
-discourse_manage_lm = LitellmModel(model=gpt_4o_model_name, max_tokens=500, **openai_kwargs)
-utterance_polishing_lm = LitellmModel(model=gpt_4o_model_name, max_tokens=2000, **openai_kwargs)
-warmstart_outline_gen_lm = LitellmModel(model=gpt_4o_model_name, max_tokens=500, **openai_kwargs)
-question_asking_lm = LitellmModel(model=gpt_4o_model_name, max_tokens=300, **openai_kwargs)
-knowledge_base_lm = LitellmModel(model=gpt_4o_model_name, max_tokens=1000, **openai_kwargs)
-
-lm_config.set_question_answering_lm(question_answering_lm)
-lm_config.set_discourse_manage_lm(discourse_manage_lm)
-lm_config.set_utterance_polishing_lm(utterance_polishing_lm)
-lm_config.set_warmstart_outline_gen_lm(warmstart_outline_gen_lm)
-lm_config.set_question_asking_lm(question_asking_lm)
-lm_config.set_knowledge_base_lm(knowledge_base_lm)
-
-# Check out the Co-STORM's RunnerArguments class for more configurations.
-topic = input('Topic: ')
-runner_argument = RunnerArgument(topic=topic, ...)
-logging_wrapper = LoggingWrapper(lm_config)
-bing_rm = BingSearch(bing_search_api_key=os.environ.get("BING_SEARCH_API_KEY"),
-                     k=runner_argument.retrieve_top_k)
-costorm_runner = CoStormRunner(lm_config=lm_config,
-                               runner_argument=runner_argument,
-                               logging_wrapper=logging_wrapper,
-                               rm=bing_rm)
-```
-
-The `CoStormRunner` instance can be evoked with the `warmstart()` and `step(...)` methods.
-
-```python
-# Warm start the system to build shared conceptual space between Co-STORM and users
-costorm_runner.warm_start()
-
-# Step through the collaborative discourse 
-# Run either of the code snippets below in any order, as many times as you'd like
-# To observe the conversation:
-conv_turn = costorm_runner.step()
-# To inject your utterance to actively steer the conversation:
-costorm_runner.step(user_utterance="YOUR UTTERANCE HERE")
-
-# Generate report based on the collaborative discourse
-costorm_runner.knowledge_base.reorganize()
-article = costorm_runner.generate_report()
-print(article)
-```
-
-## Quick Start with Example Scripts
-
-We provide scripts in our [examples folder](examples) as a quick start to run STORM and Co-STORM with different configurations.
-
-We suggest using `secrets.toml` to set up the API keys. Create a file `secrets.toml` under the root directory and add the following content:
-
-```shell
-# ============ language model configurations ============ 
-# Set up OpenAI API key.
-OPENAI_API_KEY="your_openai_api_key"
-# If you are using the API service provided by OpenAI, include the following line:
-OPENAI_API_TYPE="openai"
-# If you are using the API service provided by Microsoft Azure, include the following lines:
-OPENAI_API_TYPE="azure"
-AZURE_API_BASE="your_azure_api_base_url"
-AZURE_API_VERSION="your_azure_api_version"
-# ============ retriever configurations ============ 
-BING_SEARCH_API_KEY="your_bing_search_api_key" # if using bing search
-# ============ encoder configurations ============ 
-ENCODER_API_TYPE="openai" # if using openai encoder
-```
-
-### STORM examples
-
-**To run STORM with `gpt` family models with default configurations:**
-
-Run the following command.
 ```bash
-python examples/storm_examples/run_storm_wiki_gpt.py \
-    --output-dir $OUTPUT_DIR \
-    --retriever bing \
+git clone https://github.com/fzolhayat-creator/storm.git
+cd storm
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+python -m pip install PyYAML ddgs
+```
+
+The editable installation makes the fork's `knowledge_storm` package available to the example scripts and keeps the repository-relative `configs/` directory accessible. `PyYAML` and `ddgs` are used by the custom configuration loader and DuckDuckGo adapter but are not explicitly listed in `requirements.txt`. Installing the published `knowledge-storm` package alone does not install this fork's changes.
+
+For an existing checkout, start in its repository root—the directory containing `setup.py`, `configs/`, and `knowledge_storm/`—and run the installation steps there.
+
+### 2. Prepare LM Studio
+
+Start LM Studio's OpenAI-compatible server and make the desired models available. The checked-in configuration uses `http://localhost:1234/v1`. Check the model IDs reported by your server:
+
+```bash
+curl http://localhost:1234/v1/models
+```
+
+Set `lmstudio.api_base` and the two model names in [`configs/model_config.yaml`](configs/model_config.yaml) to match your server. If server authentication is enabled, configure `lmstudio.api_key` accordingly and supply the corresponding bearer token when checking the endpoint.
+
+| Model group | Checked-in model ID | Pipeline roles |
+| --- | --- | --- |
+| Research | `ornith-1.0-9b` | Persona generation, question asking, conversation simulation |
+| Writing | `google/gemma-4-e4b` | Outline generation, article generation, article polishing |
+
+These IDs describe the supplied configuration, not a model compatibility guarantee or a requirement to use those particular models. Both groups can point to the same served model. Capacity, context length, and output quality depend on your selected models and hardware.
+
+### 3. Run the complete wiki pipeline
+
+Run from the repository root. DuckDuckGo does not require a search API key. The runner also attempts to read `secrets.toml`; an empty file is sufficient for this example. `touch` preserves any existing contents, and the file is ignored by Git.
+
+```bash
+touch secrets.toml
+python examples/storm_examples/run_storm_wiki_lmstudio.py \
+    --output-dir ./results/lmstudio \
+    --retriever duckduckgo \
+    --max-thread-num 1 \
     --do-research \
     --do-generate-outline \
     --do-generate-article \
     --do-polish-article
 ```
 
-**To run STORM using your favorite language models or grounding on your own corpus:** Check out [examples/storm_examples/README.md](examples/storm_examples/README.md).
+Enter a topic at the `Topic:` prompt. Starting with one worker limits concurrent requests to the local server; increase concurrency if your setup supports it. The `paraphrase-MiniLM-L6-v2` embedding model is used for reference retrieval and may be downloaded on first use.
 
-### Co-STORM examples
-
-To run Co-STORM with `gpt` family models with default configurations,
-
-1. Add `BING_SEARCH_API_KEY="xxx"` and `ENCODER_API_TYPE="xxx"` to `secrets.toml`
-2. Run the following command
+All four stage flags are needed for a fresh, complete run. When a stage is skipped, later stages may require previously generated artifacts for the same topic and output directory. Available arguments can be inspected with:
 
 ```bash
-python examples/costorm_examples/run_costorm_gpt.py \
-    --output-dir $OUTPUT_DIR \
-    --retriever bing
+python examples/storm_examples/run_storm_wiki_lmstudio.py --help
 ```
 
-## Customization of the Pipeline
+## Configuration
 
-### STORM
+| File | Current behavior |
+| --- | --- |
+| [`configs/model_config.yaml`](configs/model_config.yaml) | The local runner reads `lmstudio.api_base`, `lmstudio.api_key`, and the research/writing model names |
+| [`configs/generation_config.yaml`](configs/generation_config.yaml) | The runner passes per-stage `temperature`, `top_p`, and `max_tokens` to model constructors, with `global` fallbacks; see the request-forwarding limitation below |
+| [`configs/retrieval_config.yaml`](configs/retrieval_config.yaml) | A configuration scaffold with a loader; the local runner does **not** load or apply this file |
+| [`knowledge_storm/config_loader.py`](knowledge_storm/config_loader.py) | Resolves YAML files from the repository's `configs/` directory; it supplies data rather than constructing models or retrievers |
 
-If you have installed the source code, you can customize STORM based on your own use case. STORM engine consists of 4 modules:
+Persona generation uses `persona_generation`; question asking and conversation simulation both use `conversation_simulation`. Writing stages use their correspondingly named sections.
 
-1. Knowledge Curation Module: Collects a broad coverage of information about the given topic.
-2. Outline Generation Module: Organizes the collected information by generating a hierarchical outline for the curated knowledge.
-3. Article Generation Module: Populates the generated outline with the collected information.
-4. Article Polishing Module: Refines and enhances the written article for better presentation.
+Select the retriever explicitly with `--retriever` and control result count with `--search-top-k`. The runner also forwards `--max-conv-turn`, `--max-perspective`, and `--max-thread-num` to the engine. Its listed retrieval choices are `bing`, `you`, `brave`, `serper`, `duckduckgo`, `tavily`, `searxng`, and `azure_ai_search`; provider-specific credentials and services are required where applicable. These inherited alternatives are not all validated for this custom runner.
 
-The interface for each module is defined in `knowledge_storm/interface.py`, while their implementations are instantiated in `knowledge_storm/storm_wiki/modules/*`. These modules can be customized according to your specific requirements (e.g., generating sections in bullet point format instead of full paragraphs).
+For providers that need credentials, use environment variables or a local `secrets.toml` containing the keys expected by the selected adapter, such as `YDC_API_KEY`, `BRAVE_API_KEY`, `SERPER_API_KEY`, or `TAVILY_API_KEY`. Values loaded from that file overwrite matching environment variables. See the runner and [`knowledge_storm/rm.py`](knowledge_storm/rm.py) for each integration.
 
-### Co-STORM
+## Outputs and diagnostics
 
-If you have installed the source code, you can customize Co-STORM based on your own use case
+The quick-start command writes artifacts under `results/lmstudio/<topic>/`, with the topic normalized for a directory name.
 
-1. Co-STORM introduces multiple LLM agent types (i.e. Co-STORM experts and Moderator). LLM agent interface is defined in `knowledge_storm/interface.py` , while its implementation is instantiated in `knowledge_storm/collaborative_storm/modules/co_storm_agents.py`. Different LLM agent policies can be customized.
-2. Co-STORM introduces a collaborative discourse protocol, with its core function centered on turn policy management. We provide an example implementation of turn policy management through `DiscourseManager` in `knowledge_storm/collaborative_storm/engine.py`. It can be customized and further improved.
+| Artifact | Contents |
+| --- | --- |
+| `conversation_log.json` | Research conversations |
+| `raw_search_results.json` | Retrieved source information |
+| `direct_gen_outline.txt` | Initial outline |
+| `storm_gen_outline.txt` | Research-informed outline |
+| `storm_gen_article.txt` | Generated article |
+| `storm_gen_article_polished.txt` | Polished article |
+| `url_to_info.json` | Article reference information |
+| `run_config.json` | Model configuration recorded by `post_run()` |
+| `llm_call_history.jsonl` | Engine history export; the custom direct HTTP client does not populate its inherited history, so this is not a complete local inference trace |
 
-## Datasets
-To facilitate the study of automatic knowledge curation and complex information seeking, our project releases the following datasets:
+The local client prints requests and responses, finish reasons, and token usage reported by the server. The runner prints its selected model assignments and generation configuration, then calls the engine summary. These are diagnostic outputs, not a guarantee that every configured parameter reached the server. Prompts and retrieved text can appear in the verbose output.
 
-### FreshWiki
-The FreshWiki Dataset is a collection of 100 high-quality Wikipedia articles focusing on the most-edited pages from February 2022 to September 2023. See Section 2.1 in [STORM paper](https://arxiv.org/abs/2402.14207) for more details.
+## Current limitations
 
-You can download the dataset from [huggingface](https://huggingface.co/datasets/EchoShao8899/FreshWiki) directly. To ease the data contamination issue, we archive the [source code](https://github.com/stanford-oval/storm/tree/NAACL-2024-code-backup/FreshWiki) for the data construction pipeline that can be repeated at future dates.
+- **Generation settings:** `OpenAIModel.request()` forwards supported generation keys supplied at call time. The custom `__call__()` does not merge constructor defaults from `self.kwargs` into those calls. YAML values passed to constructors are therefore not guaranteed to appear in outgoing requests; inspect the printed payload when tuning generation.
+- **Inactive runtime fields:** the local runner does not consume the top-level `provider`, `openai_compatible`, per-model `api_base`, or YAML `lmstudio.timeout` fields. Both model groups use `lmstudio.api_base`, and the HTTP timeout is currently hard-coded to 600 seconds in `lm.py`.
+- **Retrieval controls:** `retrieval_config.yaml` does not select or configure the active retriever. The DuckDuckGo adapter uses `ddgs` with `backend="auto"` and returns an empty result list after a caught search error. Safe-search and region values accepted by the adapter are not passed into its `ddgs.text()` call.
+- **Unused CLI options:** `--retrieve-top-k` and `--remove-duplicate` are parsed by the local runner but are not forwarded to the engine.
+- **Inherited entry points:** the Streamlit demo and other STORM examples do not set the fork's new persona-model slot. When adapting them, explicitly call `lm_configs.set_persona_generator_lm(...)` before constructing `STORMWikiRunner`, and review their provider setup. The Co-STORM example has its own model and encoder configuration.
+- **Validation scope:** the previous fork README reported a successful local end-to-end run with Ornith, Gemma, and DuckDuckGo. No reproducible run log accompanies that claim in the tracked repository. Treat it as a historical maintainer report, not evidence that every model, provider, or current environment has been tested.
 
-### WildSeek
-To study users’ interests in complex information seeking tasks in the wild, we utilized data collected from the web research preview to create the WildSeek dataset. We downsampled the data to ensure the diversity of the topics and the quality of the data. Each data point is a pair comprising a topic and the user’s goal for conducting deep search on the topic.  For more details, please refer to Section 2.2 and Appendix A of [Co-STORM paper](https://www.arxiv.org/abs/2408.15232).
+## Repository guide and inherited examples
 
-The WildSeek dataset is available [here](https://huggingface.co/datasets/YuchengJiang/WildSeek).
+| Path | Purpose |
+| --- | --- |
+| [`examples/storm_examples/run_storm_wiki_lmstudio.py`](examples/storm_examples/run_storm_wiki_lmstudio.py) | Custom local CLI entry point |
+| [`configs/`](configs/) | Model, generation, and retrieval configuration files |
+| [`knowledge_storm/storm_wiki/`](knowledge_storm/storm_wiki/) | STORM wiki runner and research/writing modules |
+| [`knowledge_storm/collaborative_storm/`](knowledge_storm/collaborative_storm/) | Inherited Co-STORM engine and modules |
+| [`knowledge_storm/lm.py`](knowledge_storm/lm.py) | Language-model clients, including the adapted local client |
+| [`knowledge_storm/rm.py`](knowledge_storm/rm.py) | Retrieval adapters |
+| [`knowledge_storm/interface.py`](knowledge_storm/interface.py) | Shared pipeline interfaces |
+| [`frontend/demo_light/`](frontend/demo_light/) | Inherited Streamlit demo |
 
-## Replicate STORM & Co-STORM paper result
+The [STORM example guide](examples/storm_examples/README.md), [Co-STORM example](examples/costorm_examples/run_costorm_gpt.py), and [demo setup guide](frontend/demo_light/README.md) remain available as upstream-derived references. Review the limitations above when adapting them to this fork. General upstream API documentation is in the [upstream README](https://github.com/stanford-oval/storm#readme).
 
-For STORM paper experiments, please switch to the branch `NAACL-2024-code-backup` [here](https://github.com/stanford-oval/storm/tree/NAACL-2024-code-backup).
+For custom-fork questions and changes, use [this fork's issues](https://github.com/fzolhayat-creator/storm/issues) and [pull requests](https://github.com/fzolhayat-creator/storm/pulls). Include your model IDs, relevant configuration, command, and a concise reproduction. The inherited [contribution guide](CONTRIBUTING.md) documents development conventions; its upstream roadmap and acceptance policies should be read in their original context.
 
-For Co-STORM paper experiments, please switch to the branch `EMNLP-2024-code-backup` (placeholder for now, will be updated soon).
+## Upstream research and datasets
 
-## Roadmap & Contributions
-Our team is actively working on:
-1. Human-in-the-Loop Functionalities: Supporting user participation in the knowledge curation process.
-2. Information Abstraction: Developing abstractions for curated information to support presentation formats beyond the Wikipedia-style report.
+- [STORM paper](https://arxiv.org/abs/2402.14207): research and generation of Wikipedia-like articles from scratch.
+- [Co-STORM paper](https://arxiv.org/abs/2408.15232): human participation in language-model agent conversations.
+- [Stanford project website](https://storm-project.stanford.edu/) and [research preview](https://storm.genie.stanford.edu/): upstream resources, separate from this fork's local runner.
+- [FreshWiki](https://huggingface.co/datasets/EchoShao8899/FreshWiki) and [WildSeek](https://huggingface.co/datasets/YuchengJiang/WildSeek): datasets released by the upstream researchers.
+- [NAACL 2024 code archive](https://github.com/stanford-oval/storm/tree/NAACL-2024-code-backup): the upstream reference for reproducing the original STORM paper experiments. This fork's local configuration is a separate execution setup.
 
-If you have any questions or suggestions, please feel free to open an issue or pull request. We welcome contributions to improve the system and the codebase!
+## Attribution and license
 
-Contact person: [Yijia Shao](mailto:shaoyj@stanford.edu) and [Yucheng Jiang](mailto:yuchengj@stanford.edu)
+This fork retains the [MIT license](LICENSE) and the original notice: **Copyright (c) 2024 Stanford Open Virtual Assistant Lab**. See the license file for the full terms. The fork-specific integration is maintained in [fzolhayat-creator/storm](https://github.com/fzolhayat-creator/storm); it is not an official Stanford release.
 
-## Acknowledgement
-We would like to thank Wikipedia for its excellent open-source content. The FreshWiki dataset is sourced from Wikipedia, licensed under the Creative Commons Attribution-ShareAlike (CC BY-SA) license.
+Upstream acknowledgements are retained here: Wikipedia provides the source content used by FreshWiki under its Creative Commons Attribution-ShareAlike terms; [Michelle Lam](https://michelle123lam.github.io/) designed the STORM logo; [Dekun Ma](https://dekun.me) led the UI development; and upstream credits Vercel for supporting its research preview. Dataset and source-content terms are distinct from the repository's software license.
 
-We are very grateful to [Michelle Lam](https://michelle123lam.github.io/) for designing the logo for this project and [Dekun Ma](https://dekun.me) for leading the UI development.
-
-Thanks to Vercel for their support of [open-source software](https://storm.genie.stanford.edu)
+The architecture images are the supplied original and custom V3 GitDiagram exports. Their filenames are normalized for repository links; their image contents are unchanged.
 
 ## Citation
-Please cite our paper if you use this code or part of it in your work:
+
+Please cite the upstream papers when using STORM or Co-STORM in research. These citations credit the original research, independently of the fork's engineering changes.
+
 ```bibtex
 @inproceedings{jiang-etal-2024-unknown,
     title = "Into the Unknown Unknowns: Engaged Human Learning through Participation in Language Model Agent Conversations",
