@@ -1,12 +1,12 @@
-# STORM — Custom Local Multi-Model Research and Writing
+# STORM — Custom Local Multi-Model Automated Research and Writing
 
-An independent custom fork of Stanford OVAL’s STORM with locally hosted inference, YAML-based model assignment, dedicated persona-model configuration, retrieval improvements, and execution diagnostics.
+An independent custom fork of [Stanford OVAL's STORM](https://github.com/stanford-oval/storm) with locally hosted inference, YAML-based model assignment, dedicated persona-model configuration, retrieval improvements, and execution diagnostics.
 
 ---
 
 Research a topic, organize evidence, and generate a Wikipedia-style article with citations using locally hosted language models.
 
-This is [fzolhayat-creator/storm](https://github.com/fzolhayat-creator/storm), an independent customized fork of [Stanford OVAL's STORM](https://github.com/stanford-oval/storm). STORM stands for **Synthesis of Topic Outlines through Retrieval and Multi-perspective Question Asking**. The original research, STORM and Co-STORM algorithms, and foundational implementation belong to the upstream authors. This fork focuses on an LM Studio execution path for the STORM wiki pipeline.
+This is [fzolhayat-creator/storm](https://github.com/fzolhayat-creator/storm), an independent customized fork of Stanford OVAL's STORM. STORM stands for **Synthesis of Topic Outlines through Retrieval and Multi-perspective Question Asking**. The original research, STORM and Co-STORM algorithms, and foundational implementation belong to the upstream authors. This fork focuses on an LM Studio execution path for the STORM wiki pipeline.
 
 [Quick start](#quick-start) · [Architecture](#architecture-and-diagram-comparison) · [Configuration](#configuration) · [Limitations](#current-limitations) · [Citation](#citation) · [MIT license](LICENSE)
 
