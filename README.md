@@ -1,4 +1,4 @@
-# Custom STORM Fork — Local Multi-Model Automated Research and Writing (Knowledge Curation System)
+# Custom STORM Fork — Local Multi-Model Interactive Knowledge Curation System
 
 An independent custom fork of [Stanford OVAL's STORM](https://github.com/stanford-oval/storm) with locally hosted inference, YAML-based model assignment, dedicated persona-model configuration, retrieval improvements, and execution diagnostics.
 
